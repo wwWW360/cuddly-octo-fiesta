@@ -1,0 +1,182 @@
+name: build-apk
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: generate project
+        run: |
+          python3 - <<'PY'
+          import pathlib
+          def w(p, s):
+              f = pathlib.Path(p); f.parent.mkdir(parents=True, exist_ok=True); f.write_text(s, encoding='utf-8')
+
+          w('settings.gradle', r'''pluginManagement { repositories { google(); mavenCentral(); gradlePluginPortal() } }
+          dependencyResolutionManagement { repositories { google(); mavenCentral() } }
+          rootProject.name = 'DeskPet'
+          include ':app'
+          ''')
+          w('build.gradle', r'''plugins { id 'com.android.application' version '8.5.2' apply false }
+          ''')
+          w('gradle.properties', r'''org.gradle.jvmargs=-Xmx3g
+          android.useAndroidX=false
+          ''')
+          w('app/build.gradle', r'''plugins { id 'com.android.application' }
+          android {
+              namespace 'com.deskpet.app'
+              compileSdk 34
+              defaultConfig {
+                  applicationId 'com.deskpet.app'
+                  minSdk 24
+                  targetSdk 34
+                  versionCode 1
+                  versionName '0.1'
+              }
+              compileOptions {
+                  sourceCompatibility JavaVersion.VERSION_17
+                  targetCompatibility JavaVersion.VERSION_17
+              }
+          }
+          ''')
+          w('app/src/main/AndroidManifest.xml', r'''<?xml version="1.0" encoding="utf-8"?>
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+              <application android:label="小灯" android:allowBackup="true"
+                  android:theme="@android:style/Theme.DeviceDefault.Light.NoActionBar">
+                  <activity android:name=".MainActivity" android:exported="true">
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN"/>
+                          <category android:name="android.intent.category.LAUNCHER"/>
+                      </intent-filter>
+                  </activity>
+              </application>
+          </manifest>
+          ''')
+          w('app/src/main/java/com/deskpet/app/MainActivity.java', r'''package com.deskpet.app;
+
+          import android.app.Activity;
+          import android.graphics.Color;
+          import android.os.Bundle;
+          import android.webkit.WebSettings;
+          import android.webkit.WebView;
+          import android.webkit.WebViewClient;
+
+          public class MainActivity extends Activity {
+              private WebView web;
+
+              @Override
+              protected void onCreate(Bundle b) {
+                  super.onCreate(b);
+                  web = new WebView(this);
+                  WebSettings s = web.getSettings();
+                  s.setJavaScriptEnabled(true);
+                  s.setDomStorageEnabled(true);
+                  web.setBackgroundColor(Color.TRANSPARENT);
+                  web.setWebViewClient(new WebViewClient());
+                  web.loadUrl("file:///android_asset/index.html");
+                  setContentView(web);
+              }
+          }
+          ''')
+          w('app/src/main/assets/index.html', r'''<!doctype html>
+          <html lang="zh"><head><meta charset="utf-8">
+          <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+          <title>小灯</title>
+          <style>
+          :root{--fg:#3a2f2a;--card:#fffaf0;--line:#b89a76;--accent:#c0603a}
+          html,body{margin:0;height:100%;background:linear-gradient(#f8ecd8,#efc9a0);color:var(--fg);font-family:sans-serif}
+          main{max-width:480px;margin:0 auto;padding:28px 14px;display:flex;flex-direction:column;align-items:center;gap:12px}
+          h1{font-size:18px;margin:0;letter-spacing:2px}
+          #bubble{min-height:56px;max-width:92%;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:10px 14px;font-size:15px;line-height:1.55;text-align:center;position:relative}
+          #bubble::after{content:"";position:absolute;bottom:-8px;left:50%;margin-left:-8px;border:8px solid transparent;border-bottom:0;border-top-color:var(--line)}
+          #pet{width:230px;height:276px;-webkit-tap-highlight-color:transparent;user-select:none}
+          .bob{animation:bob 3.6s ease-in-out infinite;transform-origin:100px 230px}
+          @keyframes bob{50%{transform:translateY(-5px)}}
+          .eye{transform-box:fill-box;transform-origin:center;animation:blink 5s infinite}
+          @keyframes blink{0%,94%,100%{transform:scaleY(1)}97%{transform:scaleY(.1)}}
+          .focus .eye{animation:none;transform:scaleY(.3)}
+          .halo{animation:glow 2.8s ease-in-out infinite;transform-box:fill-box;transform-origin:center}
+          @keyframes glow{50%{opacity:.55;transform:scale(1.18)}}
+          .ff{font-size:11px;fill:var(--accent);opacity:0;animation:fly 6s linear infinite}
+          @keyframes fly{0%{opacity:0;transform:translateY(0)}20%{opacity:.9}100%{opacity:0;transform:translateY(-70px)}}
+          .poke{animation:poke .3s}
+          @keyframes poke{40%{transform:scale(.95,1.04)}}
+          .row{display:flex;gap:10px;align-items:center}
+          button{font:inherit;font-size:14px;color:var(--fg);background:var(--card);border:1px solid var(--line);border-radius:10px;padding:8px 14px}
+          #clock{font-variant-numeric:tabular-nums;font-size:15px;min-width:52px}
+          .note{font-size:12px;opacity:.6;text-align:center}
+          </style></head><body><main>
+          <h1>小灯</h1>
+          <div id="bubble">戳戳我。</div>
+          <svg id="pet" viewBox="0 0 200 240">
+          <defs>
+          <linearGradient id="hair" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#e8b060"/><stop offset="1" stop-color="#c4684a"/></linearGradient>
+          <radialGradient id="orb"><stop offset="0" stop-color="#fff6c8"/><stop offset=".6" stop-color="#ffc468"/><stop offset="1" stop-color="#f08c48"/></radialGradient>
+          </defs>
+          <ellipse cx="100" cy="228" rx="52" ry="8" fill="#000" opacity=".12"/>
+          <g class="bob">
+          <path d="M52 222 C50 168 66 140 100 138 C134 140 150 168 148 222 Z" fill="#efe1c6" stroke="#b89a76" stroke-width="2"/>
+          <path d="M70 170 q8 6 0 14 M130 168 q-8 6 0 14 M96 150 v60" stroke="#d8c4a0" stroke-width="2" fill="none" stroke-linecap="round"/>
+          <circle cx="100" cy="96" r="40" fill="#f8dcc4" stroke="#b89a76" stroke-width="2"/>
+          <path d="M58 92 C54 52 82 40 104 44 C132 44 150 62 142 96 C136 78 128 70 112 70 C100 74 90 66 80 72 C68 78 64 86 58 92Z" fill="url(#hair)"/>
+          <path d="M66 70 q-10 8 -8 20 M138 66 q12 10 6 26 M92 48 q6 14 -4 22" stroke="#a8502e" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+          <ellipse class="eye" cx="84" cy="100" rx="4.5" ry="6" fill="#3a2f2a"/>
+          <ellipse class="eye" cx="116" cy="100" rx="4.5" ry="6" fill="#3a2f2a"/>
+          <path d="M90 116 q10 8 20 0" stroke="#a8604a" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+          <ellipse cx="74" cy="112" rx="6" ry="3.5" fill="#f0a090" opacity=".5"/><ellipse cx="126" cy="112" rx="6" ry="3.5" fill="#f0a090" opacity=".5"/>
+          <circle class="halo" cx="100" cy="178" r="26" fill="#ffc468" opacity=".35"/>
+          <circle cx="100" cy="178" r="15" fill="url(#orb)"/>
+          <circle cx="76" cy="182" r="7" fill="#f8dcc4" stroke="#b89a76" stroke-width="1.5"/><circle cx="124" cy="182" r="7" fill="#f8dcc4" stroke="#b89a76" stroke-width="1.5"/>
+          </g>
+          <text class="ff" x="78" y="160" style="animation-delay:0s">字</text>
+          <text class="ff" x="116" y="164" style="animation-delay:2s">a</text>
+          <text class="ff" x="98" y="156" style="animation-delay:4s">光</text>
+          </svg>
+          <div class="row"><button id="focus">一起专注 25 分钟</button><span id="clock"></span></div>
+          <div class="note">这个版本不联网，也不聊天，先试试能不能装上。</div>
+          </main>
+          <script>
+          var $=function(i){return document.getElementById(i)};
+          var h=new Date().getHours();
+          var hi=h<5?'这么晚了，还没睡呀。':h<11?'早上好。':h<14?'中午了，记得吃点东西。':h<18?'下午好。':h<22?'晚上好。':'夜深了，别熬太久。';
+          var lines=['在呢。','嗯？','戳我干嘛，有点痒。','我在旁边。','今天过得怎么样？','喝口水吧。','慢慢来就好。','我的小灯还亮着。','不急，一件一件来。','你忙的话，我就安静待着。'];
+          var last=-1,endAt=0,tm=null;
+          $('bubble').textContent=hi;
+          $('pet').onclick=function(){
+            var p=$('pet');p.classList.remove('poke');void p.getBoundingClientRect();p.classList.add('poke');
+            var i;do{i=Math.floor(Math.random()*lines.length)}while(i===last);last=i;
+            $('bubble').textContent=lines[i];
+          };
+          function tick(){
+            var left=Math.max(0,endAt-Date.now()),m=Math.floor(left/60000),s=Math.floor(left/1000)%60;
+            $('clock').textContent=(m<10?'0':'')+m+':'+(s<10?'0':'')+s;
+            if(left<=0){stop();$('bubble').textContent='时间到啦，歇一会儿吧。'}
+          }
+          function stop(){clearInterval(tm);tm=null;endAt=0;$('pet').classList.remove('focus');$('focus').textContent='一起专注 25 分钟';$('clock').textContent=''}
+          $('focus').onclick=function(){
+            if(tm){stop();$('bubble').textContent='先停在这儿，没关系。';return}
+            endAt=Date.now()+25*60000;$('pet').classList.add('focus');$('focus').textContent='停止专注';
+            $('bubble').textContent='嗯，我在旁边陪着，不吵你。';tick();tm=setInterval(tick,1000);
+          };
+          </script></body></html>
+          ''')
+          PY
+      - name: build apk
+        run: gradle assembleDebug --no-daemon --stacktrace
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v0.1-${{ github.run_number }}
+          name: 小灯 v0.1 (${{ github.run_number }})
+          files: app/build/outputs/apk/debug/app-debug.apk
